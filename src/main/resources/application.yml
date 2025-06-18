@@ -1,0 +1,49 @@
+# spring.application.name: DokodaPepper
+
+# 管理者アカウント（環境変数から注入予定ならコメントのままでOK）
+# app:
+#   admin:
+#     username: ${APP_ADMIN_USERNAME}
+#     password: ${APP_ADMIN_PASSWORD}
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: none # EntityからDDL自動実行はしない（update にすると本番でDDL実行されるので注意）
+    properties:
+      hibernate:
+        format_sql: true # ログ整形（コメントアウトされていたが有効化）
+
+  sql:
+    init:
+      encoding: UTF-8
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    session:
+      cookie:
+        same-site: none
+        secure: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# Google API Key
+my:
+  api:
+    key: ${SPRING_GOOGLE_API_KEY}

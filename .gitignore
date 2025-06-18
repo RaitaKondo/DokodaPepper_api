@@ -14,6 +14,11 @@ build/
 
 /src/main/resources/application.properties
 
+# Gradle build output
+/build/
+/out/
+/*.jar
+
 ### STS ###
 .apt_generated
 .classpath
