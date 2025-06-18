@@ -20,6 +20,7 @@ spring:
     properties:
       hibernate:
         format_sql: true # ログ整形（コメントアウトされていたが有効化）
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   sql:
     init:
