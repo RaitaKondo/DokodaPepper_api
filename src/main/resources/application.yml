@@ -1,11 +1,5 @@
 # spring.application.name: DokodaPepper
 
-# 管理者アカウント（環境変数から注入予定ならコメントのままでOK）
-# app:
-#   admin:
-#     username: ${APP_ADMIN_USERNAME}
-#     password: ${APP_ADMIN_PASSWORD}
-
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver

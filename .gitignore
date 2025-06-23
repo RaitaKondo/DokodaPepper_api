@@ -10,6 +10,7 @@ build/
 
 # ただし default.jpg は除外（＝追跡対象にする）
 !/src/main/resources/static/images/default.jpg
+!/src/main/resources/static/images/default.png
 
 
 /src/main/resources/application.properties

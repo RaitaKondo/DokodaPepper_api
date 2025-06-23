@@ -83,13 +83,11 @@ public class PostController {
     }
 
     @GetMapping("/posts/{postId}")
-    public ResponseEntity<PostReturnForm> getPostById(@RequestParam Long postId) {
-        Optional<Post> postOpt = postRepository.findById(postId);
-        if (postOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
-        }
+    public ResponseEntity<?> getPostById(@PathVariable Long postId) {
+        try{
 
-        Post post = postOpt.get();
+        Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
+
         PostReturnForm postReturnForm = new PostReturnForm();
         postReturnForm.setPostId(post.getId());
         postReturnForm.setContent(post.getContent());
@@ -104,10 +102,15 @@ public class PostController {
         postReturnForm.setAddress(post.getAddress());
 
         return ResponseEntity.ok(postReturnForm);
+        }catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("投稿は見つかりませんでした");
+        }
     }
 
     @GetMapping("/posts/{postId}/comments")
-    public ResponseEntity<List<CommentReturnForm>> getComments(@PathVariable Long postId) {
+    public ResponseEntity<?> getComments(@PathVariable Long postId) {
+        try {
+            
         Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
         List<Comment> comments = commentRepository.findByPostOrderByCreatedAtDesc(post);
         List<CommentReturnForm> commentReturnForms = comments.stream()
@@ -115,21 +118,27 @@ public class PostController {
                         comment.getContent(), comment.getCreatedAt()))
                 .toList();
         return ResponseEntity.ok(commentReturnForms);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("コメントは見つかりませんでした");
+        }
     }
 
     @PostMapping("/posts/{postId}/comments")
     public ResponseEntity<?> addComment(@PathVariable Long postId, @Valid @RequestBody CommentForm form,
             Authentication authentication) {
 
+    try {
         User user = userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new RuntimeException("Post not found"));
 
         // 1分以内に5件以上コメントしていないかチェック
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
         int recentCommentCount = commentRepository.countRecentComments(user.getId(), oneMinuteAgo);
         if (recentCommentCount >= 5) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("1分以内に5件以上のコメントはできません");
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body("1分以内に5件以上のコメントはできません");
         }
 
         Comment comment = new Comment();
@@ -140,6 +149,12 @@ public class PostController {
         commentRepository.save(comment);
 
         return ResponseEntity.ok("コメントを投稿しました");
+
+    } catch (RuntimeException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("コメント投稿中にエラーが発生しました");
+    }
     }
 
     @PostMapping("/posts/{postId}/edited")
@@ -168,7 +183,7 @@ public class PostController {
 
             return ResponseEntity.ok("ok");
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("投稿の作成に失敗しました: " + e.getMessage());
         }
     }
@@ -239,6 +254,8 @@ public class PostController {
     @GetMapping("/posts/prefecture/{prefectureId}")
     public Page<PostReturnForm> getPostsByPref(@RequestParam(defaultValue = "0") int page,
             @PathVariable Long prefectureId, Authentication authentication) {
+                try{
+
         Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
         Page<PostReturnForm> postReturnForms = postRepository.findByPrefectureId(prefectureId, pageable).map(post -> {
             PostReturnForm postReturnForm = new PostReturnForm();
@@ -264,14 +281,25 @@ public class PostController {
             FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
             boolean isFoundIt = foundItRepository.existsById(foundItId);
             postReturnForm.setFoundIt(isFoundIt);
+
+            ReportId reportId = new ReportId(user.getId(), postish.getId());
+            boolean isReported = reportRepository.existsById(reportId);
+            postReturnForm.setReported(isReported);
+
+            postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
+            postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
             return postReturnForm;
         });
         return postReturnForms;
+        } catch (RuntimeException e) {
+            return Page.empty();
+        }
     }
 
     @GetMapping("/posts/prefecture/{prefectureId}/city/{cityId}")
     public Page<PostReturnForm> getPostsByPrefAndCity(@RequestParam(defaultValue = "0") int page,
             @PathVariable Long cityId, Authentication authentication) {
+                try{
         Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
         Page<PostReturnForm> postReturnForms = postRepository.findByCity_Id(cityId, pageable).map(post -> {
             PostReturnForm postReturnForm = new PostReturnForm();
@@ -296,9 +324,19 @@ public class PostController {
             FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
             boolean isFoundIt = foundItRepository.existsById(foundItId);
             postReturnForm.setFoundIt(isFoundIt);
+
+            ReportId reportId = new ReportId(user.getId(), postish.getId());
+            boolean isReported = reportRepository.existsById(reportId);
+            postReturnForm.setReported(isReported);
+
+            postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
+            postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
             return postReturnForm;
         });
         return postReturnForms;
+        } catch (RuntimeException e) {
+            return Page.empty();
+        }
     }
 
     @PostMapping("/postNew")
@@ -347,7 +385,7 @@ public class PostController {
             if (postForm.getImages() == null || postForm.getImages().isEmpty()) {
                 PostImage postImage = new PostImage();
                 postImage.setPost(savedPost);
-                postImage.setImageUrl("/images/default.jpg"); // デフォルト画像を設定");
+                postImage.setImageUrl("/images/default.png"); // デフォルト画像を設定");
                 postImage.setSortOrder(1);
                 postImageRepository.save(postImage);
             } else {
@@ -418,15 +456,5 @@ public class PostController {
         return ResponseEntity.ok("report added");
     }
 
-//    @GetMapping("/posts/{postId}/isFoundIt")
-//    public ResponseEntity<Boolean> isFoundIt(@PathVariable Long postId, Authentication authentication) {
-//        String username = authentication.getName();
-//        User user = userRepository.findByUsername(username).orElseThrow(() -> new RuntimeException("User not found"));
-//        Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
-//
-//        FoundItId foundItId = new FoundItId(user.getId(), post.getId());
-//        boolean isFoundIt = foundItRepository.existsById(foundItId);
-//
-//        return ResponseEntity.ok(isFoundIt);
-//    }
+
 }
