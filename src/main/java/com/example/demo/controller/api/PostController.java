@@ -1,13 +1,9 @@
 package com.example.demo.controller.api;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -52,6 +48,7 @@ import com.example.demo.repository.PrefectureRepository;
 import com.example.demo.repository.ReportRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.service.PostService;
+import com.example.demo.service.S3UploadService;
 
 @RestController
 @RequestMapping("/api")
@@ -66,11 +63,12 @@ public class PostController {
     private final PostImageRepository postImageRepository;
     private final PrefectureRepository prefectureRepository;
     private final ReportRepository reportRepository;
+    private final S3UploadService s3UploadService;
 
     public PostController(PostService postService, CityRepository cityRepository, UserRepository userRepository,
             PostRepository postRepository, FoundItRepository foundItRepository, PostImageRepository postImageRepository,
             PrefectureRepository PrefectureRepository, ReportRepository reportRepository,
-            CommentRepository commentRepository) {
+            CommentRepository commentRepository, S3UploadService s3UploadService) {
         this.postService = postService;
         this.cityRepository = cityRepository;
         this.userRepository = userRepository;
@@ -80,6 +78,7 @@ public class PostController {
         this.prefectureRepository = PrefectureRepository;
         this.reportRepository = reportRepository;
         this.commentRepository = commentRepository;
+        this.s3UploadService = s3UploadService;
     }
 
     @GetMapping("/posts/{postId}")
@@ -392,15 +391,28 @@ public class PostController {
 
                 // postFormで受け取った時点ではimages[]になっている。リアクトから出した時点では複数の images ”バイナリー”で出る。
                 for (MultipartFile image : postForm.getImages()) {
-                    String fileName = UUID.randomUUID() + "_" + image.getOriginalFilename();
-                    Path path = Paths.get("src/main/resources/static/images", fileName);
-                    Files.copy(image.getInputStream(), path);
+                    
+//                    String fileName = UUID.randomUUID() + "_" + image.getOriginalFilename();
+//                    Path path = Paths.get("src/main/resources/static/images", fileName);
+                    String key = s3UploadService.upload(image);
+//                    return ResponseEntity.ok("アップロード成功: " + key);
 
                     PostImage postImage = new PostImage();
                     postImage.setPost(savedPost);
-                    postImage.setImageUrl("/images/" + fileName);
+                    postImage.setImageUrl(key);
                     postImage.setSortOrder(order++);
                     postImageRepository.save(postImage);
+                    
+                    
+//                    String fileName = UUID.randomUUID() + "_" + image.getOriginalFilename();
+//                    Path path = Paths.get("src/main/resources/static/images", fileName);
+//                    Files.copy(image.getInputStream(), path);
+//
+//                    PostImage postImage = new PostImage();
+//                    postImage.setPost(savedPost);
+//                    postImage.setImageUrl("/images/" + fileName);
+//                    postImage.setSortOrder(order++);
+//                    postImageRepository.save(postImage);
                 }
             }
 

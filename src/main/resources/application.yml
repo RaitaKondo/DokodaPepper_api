@@ -42,3 +42,10 @@ logging:
 my:
   api:
     key: ${SPRING_GOOGLE_API_KEY}
+
+aws:
+  s3:
+    access-key: ${SPRING_AWS_ACCESS_KEY}
+    secret-key: ${SPRING_AWS_SECRET_KEY}
+    region: ${SPRING_AWS_REGION}
+    bucket: ${SPRING_AWS_BUCKET_NAME}
