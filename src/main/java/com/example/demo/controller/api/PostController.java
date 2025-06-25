@@ -8,6 +8,7 @@ import java.util.Optional;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -65,6 +66,12 @@ public class PostController {
     private final ReportRepository reportRepository;
     private final S3UploadService s3UploadService;
 
+    @Value("${aws.s3.region}")
+    private String region;
+
+    @Value("${aws.s3.bucket}")
+    private String bucket;
+
     public PostController(PostService postService, CityRepository cityRepository, UserRepository userRepository,
             PostRepository postRepository, FoundItRepository foundItRepository, PostImageRepository postImageRepository,
             PrefectureRepository PrefectureRepository, ReportRepository reportRepository,
@@ -83,25 +90,25 @@ public class PostController {
 
     @GetMapping("/posts/{postId}")
     public ResponseEntity<?> getPostById(@PathVariable Long postId) {
-        try{
+        try {
 
-        Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
+            Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
 
-        PostReturnForm postReturnForm = new PostReturnForm();
-        postReturnForm.setPostId(post.getId());
-        postReturnForm.setContent(post.getContent());
-        postReturnForm.setCreatedAt(post.getCreatedAt());
-        postReturnForm.setUpdatedAt(post.getUpdatedAt());
-        postReturnForm.setUserName(post.getUser().getUsername());
-        postReturnForm.setCity(post.getCity());
-        postReturnForm.setImages(post.getImages());
-        postReturnForm.setPrefectureName(post.getPrefectureName());
-        postReturnForm.setLatitude(post.getLatitude());
-        postReturnForm.setLongitude(post.getLongitude());
-        postReturnForm.setAddress(post.getAddress());
+            PostReturnForm postReturnForm = new PostReturnForm();
+            postReturnForm.setPostId(post.getId());
+            postReturnForm.setContent(post.getContent());
+            postReturnForm.setCreatedAt(post.getCreatedAt());
+            postReturnForm.setUpdatedAt(post.getUpdatedAt());
+            postReturnForm.setUserName(post.getUser().getUsername());
+            postReturnForm.setCity(post.getCity());
+            postReturnForm.setImages(post.getImages());
+            postReturnForm.setPrefectureName(post.getPrefectureName());
+            postReturnForm.setLatitude(post.getLatitude());
+            postReturnForm.setLongitude(post.getLongitude());
+            postReturnForm.setAddress(post.getAddress());
 
-        return ResponseEntity.ok(postReturnForm);
-        }catch (RuntimeException e) {
+            return ResponseEntity.ok(postReturnForm);
+        } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("投稿は見つかりませんでした");
         }
     }
@@ -109,14 +116,14 @@ public class PostController {
     @GetMapping("/posts/{postId}/comments")
     public ResponseEntity<?> getComments(@PathVariable Long postId) {
         try {
-            
-        Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
-        List<Comment> comments = commentRepository.findByPostOrderByCreatedAtDesc(post);
-        List<CommentReturnForm> commentReturnForms = comments.stream()
-                .map((comment) -> new CommentReturnForm(comment.getId(), comment.getUser().getUsername(),
-                        comment.getContent(), comment.getCreatedAt()))
-                .toList();
-        return ResponseEntity.ok(commentReturnForms);
+
+            Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
+            List<Comment> comments = commentRepository.findByPostOrderByCreatedAtDesc(post);
+            List<CommentReturnForm> commentReturnForms = comments.stream()
+                    .map((comment) -> new CommentReturnForm(comment.getId(), comment.getUser().getUsername(),
+                            comment.getContent(), comment.getCreatedAt()))
+                    .toList();
+            return ResponseEntity.ok(commentReturnForms);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("コメントは見つかりませんでした");
         }
@@ -126,34 +133,32 @@ public class PostController {
     public ResponseEntity<?> addComment(@PathVariable Long postId, @Valid @RequestBody CommentForm form,
             Authentication authentication) {
 
-    try {
-        User user = userRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Post not found"));
+        try {
+            User user = userRepository.findByUsername(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
 
-        // 1分以内に5件以上コメントしていないかチェック
-        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
-        int recentCommentCount = commentRepository.countRecentComments(user.getId(), oneMinuteAgo);
-        if (recentCommentCount >= 5) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body("1分以内に5件以上のコメントはできません");
+            // 1分以内に5件以上コメントしていないかチェック
+            LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+            int recentCommentCount = commentRepository.countRecentComments(user.getId(), oneMinuteAgo);
+            if (recentCommentCount >= 5) {
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("1分以内に5件以上のコメントはできません");
+            }
+
+            Comment comment = new Comment();
+            comment.setContent(form.getContent());
+            comment.setUser(user);
+            comment.setPost(post);
+
+            commentRepository.save(comment);
+
+            return ResponseEntity.ok("コメントを投稿しました");
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("コメント投稿中にエラーが発生しました");
         }
-
-        Comment comment = new Comment();
-        comment.setContent(form.getContent());
-        comment.setUser(user);
-        comment.setPost(post);
-
-        commentRepository.save(comment);
-
-        return ResponseEntity.ok("コメントを投稿しました");
-
-    } catch (RuntimeException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-    } catch (Exception e) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("コメント投稿中にエラーが発生しました");
-    }
     }
 
     @PostMapping("/posts/{postId}/edited")
@@ -187,6 +192,13 @@ public class PostController {
         }
     }
 
+    private String extractS3KeyFromUrl(String url) {
+        // https://your-bucket.s3.region.amazonaws.com/yourfolder/image.jpg
+        // → yourfolder/image.jpg
+        int idx = url.indexOf(".amazonaws.com/");
+        return (idx != -1) ? url.substring(idx + ".amazonaws.com/".length()) : url;
+    }
+
     @PostMapping("/posts/{postId}/delete")
     @Transactional
     @PreAuthorize("isAuthenticated()")
@@ -200,6 +212,14 @@ public class PostController {
             Post post = postRepository.findById(postId).orElseThrow(() -> new RuntimeException("Post not found"));
             if (!post.getUser().getId().equals(user.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("この投稿を削除する権限がありません。");
+            }
+
+            // S3画像削除
+            for (PostImage image : post.getImages()) {
+                if (!image.getImageUrl().contains("default.png")) {
+                    String key = extractS3KeyFromUrl(image.getImageUrl());
+                    s3UploadService.delete(key); // ↓ 後述のサービスがこれを処理
+                }
             }
             postRepository.deleteById(postId);
 
@@ -253,43 +273,44 @@ public class PostController {
     @GetMapping("/posts/prefecture/{prefectureId}")
     public Page<PostReturnForm> getPostsByPref(@RequestParam(defaultValue = "0") int page,
             @PathVariable Long prefectureId, Authentication authentication) {
-                try{
+        try {
 
-        Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
-        Page<PostReturnForm> postReturnForms = postRepository.findByPrefectureId(prefectureId, pageable).map(post -> {
-            PostReturnForm postReturnForm = new PostReturnForm();
-            postReturnForm.setPostId(post.getId());
-            postReturnForm.setContent(post.getContent());
-            postReturnForm.setCreatedAt(post.getCreatedAt());
-            postReturnForm.setUpdatedAt(post.getUpdatedAt());
-            postReturnForm.setUserName(post.getUser().getUsername());
-            postReturnForm.setCity(post.getCity());
-            postReturnForm.setImages(post.getImages());
-            postReturnForm.setPrefectureName(post.getPrefectureName());
-            postReturnForm.setLatitude(post.getLatitude());
-            postReturnForm.setLongitude(post.getLongitude());
-            postReturnForm.setAddress(post.getAddress());
-            postReturnForm.setPrefectureId(post.getCity().getPrefecture().getId());
+            Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
+            Page<PostReturnForm> postReturnForms = postRepository.findByPrefectureId(prefectureId, pageable)
+                    .map(post -> {
+                        PostReturnForm postReturnForm = new PostReturnForm();
+                        postReturnForm.setPostId(post.getId());
+                        postReturnForm.setContent(post.getContent());
+                        postReturnForm.setCreatedAt(post.getCreatedAt());
+                        postReturnForm.setUpdatedAt(post.getUpdatedAt());
+                        postReturnForm.setUserName(post.getUser().getUsername());
+                        postReturnForm.setCity(post.getCity());
+                        postReturnForm.setImages(post.getImages());
+                        postReturnForm.setPrefectureName(post.getPrefectureName());
+                        postReturnForm.setLatitude(post.getLatitude());
+                        postReturnForm.setLongitude(post.getLongitude());
+                        postReturnForm.setAddress(post.getAddress());
+                        postReturnForm.setPrefectureId(post.getCity().getPrefecture().getId());
 
-            String username = authentication.getName();
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            Post postish = postRepository.findById(post.getId())
-                    .orElseThrow(() -> new RuntimeException("Post not found"));
+                        String username = authentication.getName();
+                        User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+                        Post postish = postRepository.findById(post.getId())
+                                .orElseThrow(() -> new RuntimeException("Post not found"));
 
-            FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
-            boolean isFoundIt = foundItRepository.existsById(foundItId);
-            postReturnForm.setFoundIt(isFoundIt);
+                        FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
+                        boolean isFoundIt = foundItRepository.existsById(foundItId);
+                        postReturnForm.setFoundIt(isFoundIt);
 
-            ReportId reportId = new ReportId(user.getId(), postish.getId());
-            boolean isReported = reportRepository.existsById(reportId);
-            postReturnForm.setReported(isReported);
+                        ReportId reportId = new ReportId(user.getId(), postish.getId());
+                        boolean isReported = reportRepository.existsById(reportId);
+                        postReturnForm.setReported(isReported);
 
-            postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
-            postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
-            return postReturnForm;
-        });
-        return postReturnForms;
+                        postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
+                        postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
+                        return postReturnForm;
+                    });
+            return postReturnForms;
         } catch (RuntimeException e) {
             return Page.empty();
         }
@@ -298,41 +319,41 @@ public class PostController {
     @GetMapping("/posts/prefecture/{prefectureId}/city/{cityId}")
     public Page<PostReturnForm> getPostsByPrefAndCity(@RequestParam(defaultValue = "0") int page,
             @PathVariable Long cityId, Authentication authentication) {
-                try{
-        Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
-        Page<PostReturnForm> postReturnForms = postRepository.findByCity_Id(cityId, pageable).map(post -> {
-            PostReturnForm postReturnForm = new PostReturnForm();
-            postReturnForm.setPostId(post.getId());
-            postReturnForm.setContent(post.getContent());
-            postReturnForm.setCreatedAt(post.getCreatedAt());
-            postReturnForm.setUpdatedAt(post.getUpdatedAt());
-            postReturnForm.setUserName(post.getUser().getUsername());
-            postReturnForm.setCity(post.getCity());
-            postReturnForm.setImages(post.getImages());
-            postReturnForm.setPrefectureName(post.getPrefectureName());
-            postReturnForm.setLatitude(post.getLatitude());
-            postReturnForm.setLongitude(post.getLongitude());
-            postReturnForm.setAddress(post.getAddress());
-            postReturnForm.setPrefectureId(post.getCity().getPrefecture().getId());
-            String username = authentication.getName();
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            Post postish = postRepository.findById(post.getId())
-                    .orElseThrow(() -> new RuntimeException("Post not found"));
+        try {
+            Pageable pageable = PageRequest.of(page, 15, Sort.by(Sort.Direction.DESC, "id"));
+            Page<PostReturnForm> postReturnForms = postRepository.findByCity_Id(cityId, pageable).map(post -> {
+                PostReturnForm postReturnForm = new PostReturnForm();
+                postReturnForm.setPostId(post.getId());
+                postReturnForm.setContent(post.getContent());
+                postReturnForm.setCreatedAt(post.getCreatedAt());
+                postReturnForm.setUpdatedAt(post.getUpdatedAt());
+                postReturnForm.setUserName(post.getUser().getUsername());
+                postReturnForm.setCity(post.getCity());
+                postReturnForm.setImages(post.getImages());
+                postReturnForm.setPrefectureName(post.getPrefectureName());
+                postReturnForm.setLatitude(post.getLatitude());
+                postReturnForm.setLongitude(post.getLongitude());
+                postReturnForm.setAddress(post.getAddress());
+                postReturnForm.setPrefectureId(post.getCity().getPrefecture().getId());
+                String username = authentication.getName();
+                User user = userRepository.findByUsername(username)
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                Post postish = postRepository.findById(post.getId())
+                        .orElseThrow(() -> new RuntimeException("Post not found"));
 
-            FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
-            boolean isFoundIt = foundItRepository.existsById(foundItId);
-            postReturnForm.setFoundIt(isFoundIt);
+                FoundItId foundItId = new FoundItId(user.getId(), postish.getId());
+                boolean isFoundIt = foundItRepository.existsById(foundItId);
+                postReturnForm.setFoundIt(isFoundIt);
 
-            ReportId reportId = new ReportId(user.getId(), postish.getId());
-            boolean isReported = reportRepository.existsById(reportId);
-            postReturnForm.setReported(isReported);
+                ReportId reportId = new ReportId(user.getId(), postish.getId());
+                boolean isReported = reportRepository.existsById(reportId);
+                postReturnForm.setReported(isReported);
 
-            postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
-            postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
-            return postReturnForm;
-        });
-        return postReturnForms;
+                postReturnForm.setNumberOfFoundIt(foundItRepository.countByPost_Id(post.getId()));
+                postReturnForm.setNumberOfReported(reportRepository.countByPost_Id(post.getId()));
+                return postReturnForm;
+            });
+            return postReturnForms;
         } catch (RuntimeException e) {
             return Page.empty();
         }
@@ -346,16 +367,15 @@ public class PostController {
         try {
             String optUsername = authentication.getName();
             Optional<User> userOpt = userRepository.findByUsername(optUsername);
-            if(userOpt.isEmpty()) {
+            if (userOpt.isEmpty()) {
                 throw new RuntimeException("user not found");
             }
-            
+
             Optional<Post> latestPostOpt = postRepository.findLatestByUser(userOpt.get());
             if (latestPostOpt.isPresent()) {
                 LocalDateTime latest = latestPostOpt.get().getCreatedAt();
                 if (latest.isAfter(LocalDateTime.now().minusMinutes(1))) {
-                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                            .body("投稿の間隔を1分以上あけてください。");
+                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("投稿の間隔を1分以上あけてください。");
                 }
             }
 
@@ -384,35 +404,22 @@ public class PostController {
             if (postForm.getImages() == null || postForm.getImages().isEmpty()) {
                 PostImage postImage = new PostImage();
                 postImage.setPost(savedPost);
-                postImage.setImageUrl("/images/default.png"); // デフォルト画像を設定");
+                postImage.setImageUrl("https://" + bucket + ".s3." + region + ".amazonaws.com/default.png"); // デフォルト画像を設定");
                 postImage.setSortOrder(1);
                 postImageRepository.save(postImage);
             } else {
 
                 // postFormで受け取った時点ではimages[]になっている。リアクトから出した時点では複数の images ”バイナリー”で出る。
                 for (MultipartFile image : postForm.getImages()) {
-                    
-//                    String fileName = UUID.randomUUID() + "_" + image.getOriginalFilename();
-//                    Path path = Paths.get("src/main/resources/static/images", fileName);
+
                     String key = s3UploadService.upload(image);
-//                    return ResponseEntity.ok("アップロード成功: " + key);
 
                     PostImage postImage = new PostImage();
                     postImage.setPost(savedPost);
                     postImage.setImageUrl(key);
                     postImage.setSortOrder(order++);
                     postImageRepository.save(postImage);
-                    
-                    
-//                    String fileName = UUID.randomUUID() + "_" + image.getOriginalFilename();
-//                    Path path = Paths.get("src/main/resources/static/images", fileName);
-//                    Files.copy(image.getInputStream(), path);
-//
-//                    PostImage postImage = new PostImage();
-//                    postImage.setPost(savedPost);
-//                    postImage.setImageUrl("/images/" + fileName);
-//                    postImage.setSortOrder(order++);
-//                    postImageRepository.save(postImage);
+
                 }
             }
 
@@ -467,6 +474,5 @@ public class PostController {
         reportRepository.save(report);
         return ResponseEntity.ok("report added");
     }
-
 
 }

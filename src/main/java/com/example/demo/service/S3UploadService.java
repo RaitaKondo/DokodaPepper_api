@@ -45,4 +45,13 @@ public class S3UploadService {
             throw new RuntimeException("S3 Upload failed: "+ e.getMessage(), e);
         }
     }
+    
+    public void delete(String key) {
+        s3Client.deleteObject(builder -> builder
+            .bucket(bucket)
+            .key(key)
+            .build()
+        );
+    }
+
 }
