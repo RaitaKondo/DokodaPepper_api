@@ -39,12 +39,12 @@ DokodaPepper は、位置情報に基づいて投稿を共有・発見する SNS
 | 認証        | 自動ログイン付き登録・ログインAPI |
 | インフラ    | Docker, Render.com                |
 | 外部API     | Google Maps Geocoding API         |
-| ストレージ  | AWS S3 (Presigned URL 対応)       |
-| その他      | Gradle, Thymeleaf (一部テンプレート) |
+| ストレージ  | AWS S3                              |
+| その他      | Gradle                             |
 
 ---
 
-2. `Dockerfile` および `Procfile` により自動ビルド＆起動
+2. `Dockerfile` により自動ビルド＆起動
 
 ---
 
@@ -63,12 +63,6 @@ DokodaPepper は、位置情報に基づいて投稿を共有・発見する SNS
 - 🔍 投稿検索（キーワード・タグなど）
 - 🔔 通知機能
 - 📊 投稿分析（人気投稿ランキング）
-
----
-
-## 📄 ライセンス
-
-MIT License（予定）
 
 ---
 
